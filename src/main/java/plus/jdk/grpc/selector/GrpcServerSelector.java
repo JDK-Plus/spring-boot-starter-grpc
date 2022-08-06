@@ -3,8 +3,7 @@ package plus.jdk.grpc.selector;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
-import org.springframework.beans.factory.DisposableBean;
-import org.springframework.beans.factory.InitializingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.context.support.WebApplicationObjectSupport;
@@ -19,19 +18,18 @@ public class GrpcServerSelector extends WebApplicationObjectSupport implements B
 
     private BeanFactory beanFactory;
 
-
     @Bean
-    public GrpcServerFactory getGrpcServerFactory(GrpcPlusProperties properties) {
+    GrpcServerFactory getGrpcServerFactory(GrpcPlusProperties properties) {
         return new GrpcServerFactory(properties, beanFactory, getApplicationContext());
     }
 
     @Bean
-    public GlobalGrpcInterceptorRegistry getGlobalGrpcInterceptorRegistry(GrpcPlusProperties properties) {
+    GlobalGrpcInterceptorRegistry getGlobalGrpcInterceptorRegistry(GrpcPlusProperties properties) {
         return new GlobalGrpcInterceptorRegistry(properties, getApplicationContext());
     }
 
     @Bean
-    public GrpcServerLifecycle getGrpcServerLifecycle(GrpcServerFactory grpcServerFactory) {
+    GrpcServerLifecycle getGrpcServerLifecycle(GrpcServerFactory grpcServerFactory) {
         return new GrpcServerLifecycle(grpcServerFactory);
     }
 

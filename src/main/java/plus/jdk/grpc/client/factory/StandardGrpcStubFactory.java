@@ -28,9 +28,9 @@ import io.grpc.stub.AbstractStub;
  * A factory for creating stubs provided by standard grpc Java library. This is an abstract super-type that can be
  * extended to support the different provided types.
  */
-public abstract class StandardJavaGrpcStubFactory {
+public abstract class StandardGrpcStubFactory {
 
-    public AbstractStub<?> createStub(final Class<? extends AbstractStub<?>> stubType, final Channel channel) {
+    public <T extends AbstractStub<T>> AbstractStub<T> createStub(final Class<T> stubType, final Channel channel) {
         try {
             // Use the public static factory method
             final String methodName = getFactoryMethodName();

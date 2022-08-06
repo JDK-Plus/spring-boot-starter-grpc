@@ -1,4 +1,4 @@
-package plus.jdk.grpc.client;
+package plus.jdk.grpc.client.factory;
 
 import io.grpc.Channel;
 import io.grpc.stub.AbstractStub;
@@ -9,7 +9,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 
-public final class FallbackStubFactory extends StandardJavaGrpcStubFactory {
+public final class FallbackStubFactory extends StandardGrpcStubFactory {
 
     @Override
     public boolean isApplicable(final Class<? extends AbstractStub<?>> stubType) {
@@ -17,7 +17,7 @@ public final class FallbackStubFactory extends StandardJavaGrpcStubFactory {
     }
 
     @Override
-    public AbstractStub<?> createStub(final Class<? extends AbstractStub<?>> stubType, final Channel channel) {
+    public <T extends AbstractStub<T>> AbstractStub<T> createStub(final Class<T> stubType, final Channel channel) {
         try {
             // Search for public static *Grpc#new*Stub(Channel)
             final Class<?> declaringClass = stubType.getDeclaringClass();
@@ -37,7 +37,7 @@ public final class FallbackStubFactory extends StandardJavaGrpcStubFactory {
             }
 
             // Search for a public constructor *Stub(Channel)
-            final Constructor<? extends AbstractStub<?>> constructor = stubType.getConstructor(Channel.class);
+            final Constructor<T> constructor = stubType.getConstructor(Channel.class);
             return constructor.newInstance(channel);
 
         } catch (final Exception e) {
