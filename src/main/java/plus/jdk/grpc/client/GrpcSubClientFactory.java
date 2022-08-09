@@ -2,6 +2,7 @@ package plus.jdk.grpc.client;
 
 
 import io.grpc.Channel;
+import io.grpc.ClientInterceptor;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.AbstractStub;
@@ -39,14 +40,22 @@ public class GrpcSubClientFactory {
     }
 
     public <T extends AbstractStub<T>>
-    T createStub(final Class<T> stubClass, String address, Integer port) {
-        ManagedChannel channel = ManagedChannelBuilder.forAddress(address, port).usePlaintext().build();
+    T createStub(final Class<T> stubClass, String address, Integer port, ClientInterceptor... interceptors) {
+        ManagedChannelBuilder<?> channelBuilder = ManagedChannelBuilder.forAddress(address, port).intercept(interceptors);
+        channelBuilder.usePlaintext();
+        ManagedChannel channel = channelBuilder.build();
         return createStub(stubClass, channel);
     }
 
     public <T extends AbstractStub<T>>
-    T createStub(final Class<T> stubClass, String address) {
+    T createStub(final Class<T> stubClass, String address, ClientInterceptor... interceptors) {
         ManagedChannel channel = ManagedChannelBuilder.forTarget(address).usePlaintext().build();
+        return createStub(stubClass, channel);
+    }
+
+    public <T extends AbstractStub<T>>
+    T createStub(final Class<T> stubClass, ManagedChannelBuilder<?> channelBuilder) {
+        ManagedChannel channel = channelBuilder.build();
         return createStub(stubClass, channel);
     }
 
