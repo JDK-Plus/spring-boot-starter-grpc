@@ -1,4 +1,5 @@
-<h3 align="center">A Springboot extension that integrates GRpc dependencies</h3>
+
+<h3 align="center">一个集成GRpc依赖的Springboot扩展</h3>
 <p align="center">
     <a href="https://github.com/JDK-Plus/spring-boot-starter-grpc/blob/master/LICENSE"><img src="https://img.shields.io/github/license/JDK-Plus/spring-boot-starter-grpc.svg" /></a>
     <a href="https://github.com/JDK-Plus/spring-boot-starter-grpc/releases"><img src="https://img.shields.io/github/release/JDK-Plus/spring-boot-starter-grpc.svg" /></a>
@@ -7,7 +8,7 @@
 </p>
 
 
-## Import dependencies
+## 引入依赖
 
 ```xml
 <dependency>
@@ -17,39 +18,39 @@
 </dependency>
 ```
 
-## Configuration items that need to be added
+## 需要添加的配置项
 
 ```
-# Whether to open grpc server
+# 是否开启grpc server
 plus.jdk.grpc.enabled=true
 
-# designated port
+# 指定端口
 plus.jdk.grpc.port=10400
 
-# Specifies the listening service address
+# 指定监听的服务地址
 plus.jdk.grpc.address=*
 
-# Whether to support long connection
+# 是否支持长连接
 plus.jdk.grpc.enable-keep-alive=true
 
-# long connection timeout disconnection time
+# 长连接超时断开时间
 plus.jdk.grpc.keep-alive-timeout=111
 
-# NioEventLoopGroup master number of core threads
+# NioEventLoopGroup master核心线程数
 plus.jdk.grpc.master-thread-num=1
 
-# NioEventLoopGroup worker number of core threads
+# NioEventLoopGroup worker线程数
 plus.jdk.grpc.worker-thread-num=10
 
-# The maximum number of bytes in a packet
+# 数据包最大多少字节
 plus.jdk.grpc.max-inbound-message-size=100000
 
-# Maximum limit of request headers sent
+# 发送的请求头最大限制
 plus.jdk.grpc.max-inbound-metadata-size=100000
 ```
-## How to use after introduction
+## 引入后如何使用
 
-### Add Protobuf as follows：
+### 添加Protobuf如下：
 
 ```proto3
 syntax = "proto3";
@@ -81,7 +82,7 @@ message HelloReply {
 }
 ```
 
-### How to define a Grpc service according to the above Protobuf structure
+### 如何根据上述的Protobuf结构定义一个Grpc service
 
 ```java
 package plus.jdk.grpc.test.grpc;
@@ -112,7 +113,7 @@ public class GreeterImplService extends GreeterGrpc.GreeterImplBase {
 }
 ```
 
-### How to call the Grpc service just defined
+### 如何调用上文中定义的GRPC服务
 
 ```java
 public class GRpcRunner implements ApplicationRunner {
