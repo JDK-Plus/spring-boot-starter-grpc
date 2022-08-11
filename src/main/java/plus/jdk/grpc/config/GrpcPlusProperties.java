@@ -24,6 +24,8 @@ public class GrpcPlusProperties {
     public static final String ANY_IPv6_ADDRESS = "::";
 
 
+    private boolean enabled = false;
+
     /**
      * 提供的grpc服务监听哪个端口
      */
