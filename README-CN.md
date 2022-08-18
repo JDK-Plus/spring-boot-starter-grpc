@@ -14,7 +14,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.0.3</version>
+    <version>1.0.4</version>
 </dependency>
 ```
 
@@ -23,6 +23,8 @@
 ```
 # 是否开启grpc server
 plus.jdk.grpc.enabled=true
+
+plus.jdk.grpc.client.enabled=true
 
 # 指定端口
 plus.jdk.grpc.port=10400
