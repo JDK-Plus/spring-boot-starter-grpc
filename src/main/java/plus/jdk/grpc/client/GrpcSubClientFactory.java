@@ -7,7 +7,10 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.AbstractStub;
 import org.springframework.beans.BeanInstantiationException;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import plus.jdk.grpc.client.factory.FallbackStubFactory;
 import plus.jdk.grpc.client.factory.StandardGrpcStubFactory;
 
@@ -20,8 +23,16 @@ public class GrpcSubClientFactory {
 
     private List<StandardGrpcStubFactory> stubFactories = null;
 
+    private final ConfigurableBeanFactory configurableBeanFactory;
+
     public GrpcSubClientFactory(ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
+        this.configurableBeanFactory = ((ConfigurableApplicationContext) this.applicationContext).getBeanFactory();
+    }
+
+    public <T extends AbstractStub<T>>
+    String getBeanName(final Class<T> stubClass) {
+        return stubClass.getName();
     }
 
     public <T extends AbstractStub<T>>
@@ -32,7 +43,19 @@ public class GrpcSubClientFactory {
                 .orElseThrow(() -> new BeanInstantiationException(stubClass,
                         "Unsupported stub type: " + stubClass.getName() + " -> Please report this issue."));
         try {
-            return stubClass.cast(factory.createStub(stubClass, channel));
+            String beanName = getBeanName(stubClass);
+            if(configurableBeanFactory.containsBean(beanName)) {
+                return configurableBeanFactory.getBean(stubClass);
+            }
+            T stub;
+            synchronized (stubClass) {
+                if(configurableBeanFactory.containsBean(beanName)) {
+                    return configurableBeanFactory.getBean(stubClass);
+                }
+                stub = stubClass.cast(factory.createStub(stubClass, channel));
+                configurableBeanFactory.registerSingleton(stubClass.getName(), stub);
+            }
+            return stub;
         } catch (final Exception exception) {
             throw new BeanInstantiationException(stubClass, "Failed to create gRPC stub of type " + stubClass.getName(),
                     exception);
