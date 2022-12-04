@@ -36,7 +36,7 @@ public class GrpcSubClientFactory {
     }
 
     public <T extends AbstractStub<T>>
-    T createStub(final Class<T> stubClass, final Channel channel) {
+    T createStub(final Class<T> stubClass, final ManagedChannelBuilder<?> channelBuilder) {
         final StandardGrpcStubFactory factory = getStubFactories().stream()
                 .filter(stubFactory -> stubFactory.isApplicable(stubClass))
                 .findFirst()
@@ -52,6 +52,8 @@ public class GrpcSubClientFactory {
                 if(configurableBeanFactory.containsBean(beanName)) {
                     return configurableBeanFactory.getBean(stubClass);
                 }
+                channelBuilder.usePlaintext();
+                ManagedChannel channel = channelBuilder.build();
                 stub = stubClass.cast(factory.createStub(stubClass, channel));
                 configurableBeanFactory.registerSingleton(stubClass.getName(), stub);
             }
@@ -66,20 +68,14 @@ public class GrpcSubClientFactory {
     T createStub(final Class<T> stubClass, String address, Integer port, ClientInterceptor... interceptors) {
         ManagedChannelBuilder<?> channelBuilder = ManagedChannelBuilder.forAddress(address, port).intercept(interceptors);
         channelBuilder.usePlaintext();
-        ManagedChannel channel = channelBuilder.build();
-        return createStub(stubClass, channel);
+        return createStub(stubClass, channelBuilder);
     }
 
     public <T extends AbstractStub<T>>
     T createStub(final Class<T> stubClass, String address, ClientInterceptor... interceptors) {
-        ManagedChannel channel = ManagedChannelBuilder.forTarget(address).usePlaintext().build();
-        return createStub(stubClass, channel);
-    }
-
-    public <T extends AbstractStub<T>>
-    T createStub(final Class<T> stubClass, ManagedChannelBuilder<?> channelBuilder) {
-        ManagedChannel channel = channelBuilder.build();
-        return createStub(stubClass, channel);
+        ManagedChannelBuilder<?> channelBuilder = ManagedChannelBuilder.forTarget(address);
+        channelBuilder.usePlaintext();
+        return createStub(stubClass, channelBuilder);
     }
 
     private List<StandardGrpcStubFactory> getStubFactories() {
