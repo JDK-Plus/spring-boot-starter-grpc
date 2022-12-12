@@ -137,22 +137,28 @@ plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
 #### Write code to make the remote call：
 
 ```java
+import org.springframework.stereotype.Component;
+import plus.jdk.grpc.annotation.GrpcClient;
+
+import javax.annotation.Resource;
+
+@Component
 public class GRpcRunner implements ApplicationRunner {
-
-    @Value("${plus.jdk.grpc.port}")
-    private String grpcPort;
-
+    
     @Resource
     private GrpcSubClientFactory grpcSubClientFactory;
+
+    @GrpcClient("MyGrpc://grpc-service-prod")
+    private GreeterGrpc.GreeterBlockingStub greeterBlockingStub;
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int port = Integer.parseInt(grpcPort);
-        ManagedChannel channel = ManagedChannelBuilder.forTarget("MyGrpc://grpc-service-prod")
-                .usePlaintext().build();
-        GreeterGrpc.GreeterBlockingStub blockingStub = grpcSubClientFactory.createStub(GreeterGrpc.GreeterBlockingStub.class, channel);
+//        ManagedChannel channel = ManagedChannelBuilder.forTarget("MyGrpc://grpc-service-prod")
+//                .usePlaintext().build();
+//        GreeterGrpc.GreeterBlockingStub blockingStub = grpcSubClientFactory.createStub(GreeterGrpc.GreeterBlockingStub.class, channel);
         HelloRequest request = HelloRequest.newBuilder().setName("jdk-plus").build();
-        HelloReply reply = blockingStub.sayHello(request);
+        HelloReply reply = greeterBlockingStub.sayHello(request);
         log.info("sayHello data:{}, receive:{}", request, reply);
         reply = blockingStub.sayHelloAgain(request);
         log.info("sayHelloAgain data:{}, receive:{}", request, reply);
