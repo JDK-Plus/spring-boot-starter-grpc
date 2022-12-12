@@ -7,10 +7,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.context.support.WebApplicationObjectSupport;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import plus.jdk.grpc.client.GrpcClientBeanPostProcessor;
 import plus.jdk.grpc.client.factory.AsyncStubFactory;
 import plus.jdk.grpc.client.factory.BlockingStubFactory;
 import plus.jdk.grpc.client.factory.FutureStubFactory;
 import plus.jdk.grpc.client.GrpcSubClientFactory;
+import plus.jdk.grpc.config.GrpcPlusClientProperties;
 
 @Configuration
 public class GrpcClientSelector extends WebApplicationObjectSupport implements BeanFactoryAware, WebMvcConfigurer {
@@ -18,8 +20,8 @@ public class GrpcClientSelector extends WebApplicationObjectSupport implements B
     private BeanFactory beanFactory;
 
     @Bean
-    GrpcSubClientFactory grpcClientBeanPostProcessor() {
-        return new GrpcSubClientFactory(getApplicationContext());
+    GrpcSubClientFactory grpcClientBeanPostProcessor(GrpcPlusClientProperties properties) {
+        return new GrpcSubClientFactory(getApplicationContext(), properties);
     }
 
     @Bean
@@ -35,6 +37,11 @@ public class GrpcClientSelector extends WebApplicationObjectSupport implements B
     @Bean
     FutureStubFactory futureStubFactory() {
         return new FutureStubFactory();
+    }
+
+    @Bean
+    GrpcClientBeanPostProcessor getGrpcClientBeanPostProcessor() {
+        return new GrpcClientBeanPostProcessor(getApplicationContext());
     }
 
     @Override

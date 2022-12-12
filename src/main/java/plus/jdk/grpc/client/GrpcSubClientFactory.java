@@ -1,10 +1,7 @@
 package plus.jdk.grpc.client;
 
 
-import io.grpc.Channel;
-import io.grpc.ClientInterceptor;
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
+import io.grpc.*;
 import io.grpc.stub.AbstractStub;
 import org.springframework.beans.BeanInstantiationException;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
@@ -13,8 +10,12 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import plus.jdk.grpc.client.factory.FallbackStubFactory;
 import plus.jdk.grpc.client.factory.StandardGrpcStubFactory;
+import plus.jdk.grpc.config.GrpcPlusClientProperties;
+import plus.jdk.grpc.model.GrpcNameResolver;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 public class GrpcSubClientFactory {
@@ -23,11 +24,22 @@ public class GrpcSubClientFactory {
 
     private List<StandardGrpcStubFactory> stubFactories = null;
 
+    private final GrpcPlusClientProperties properties;
+
     private final ConfigurableBeanFactory configurableBeanFactory;
 
-    public GrpcSubClientFactory(ApplicationContext applicationContext) {
+    public GrpcSubClientFactory(ApplicationContext applicationContext, GrpcPlusClientProperties properties) {
         this.applicationContext = applicationContext;
         this.configurableBeanFactory = ((ConfigurableApplicationContext) this.applicationContext).getBeanFactory();
+        this.properties = properties;
+        HashMap<String, GrpcNameResolver> nameResolverMap = new HashMap<>();
+        for(GrpcNameResolver nameResolver: properties.getResolvers()) {
+            if(nameResolverMap.containsKey(nameResolver.getScheme())) {
+                continue;
+            }
+            NameResolverRegistry.getDefaultRegistry().register(new StaticNameResolverProvider(properties, nameResolver.getScheme()));
+            nameResolverMap.put(nameResolver.getScheme(), nameResolver);
+        }
     }
 
     public <T extends AbstractStub<T>>
@@ -44,12 +56,12 @@ public class GrpcSubClientFactory {
                         "Unsupported stub type: " + stubClass.getName() + " -> Please report this issue."));
         try {
             String beanName = getBeanName(stubClass);
-            if(configurableBeanFactory.containsBean(beanName)) {
+            if (configurableBeanFactory.containsBean(beanName)) {
                 return configurableBeanFactory.getBean(stubClass);
             }
             T stub;
             synchronized (stubClass) {
-                if(configurableBeanFactory.containsBean(beanName)) {
+                if (configurableBeanFactory.containsBean(beanName)) {
                     return configurableBeanFactory.getBean(stubClass);
                 }
                 channelBuilder.usePlaintext();
