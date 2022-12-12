@@ -1,5 +1,6 @@
 package plus.jdk.grpc.config;
 
+import io.grpc.ClientInterceptor;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import plus.jdk.grpc.model.GrpcNameResolver;

@@ -11,12 +11,10 @@ import org.springframework.context.ConfigurableApplicationContext;
 import plus.jdk.grpc.client.factory.FallbackStubFactory;
 import plus.jdk.grpc.client.factory.StandardGrpcStubFactory;
 import plus.jdk.grpc.config.GrpcPlusClientProperties;
+import plus.jdk.grpc.global.GrpcClientInterceptorConfigurer;
 import plus.jdk.grpc.model.GrpcNameResolver;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
+import java.util.*;
 
 public class GrpcSubClientFactory {
 
@@ -43,19 +41,19 @@ public class GrpcSubClientFactory {
     }
 
     public <T extends AbstractStub<T>>
-    String getBeanName(final Class<T> stubClass) {
-        return stubClass.getName();
+    String getBeanName(final Class<T> stubClass, String address) {
+        return stubClass.getName() + "->" + address;
     }
 
     public <T extends AbstractStub<T>>
-    T createStub(final Class<T> stubClass, final ManagedChannelBuilder<?> channelBuilder) {
+    T createStub(final Class<T> stubClass, final ManagedChannelBuilder<?> channelBuilder, String address) {
         final StandardGrpcStubFactory factory = getStubFactories().stream()
                 .filter(stubFactory -> stubFactory.isApplicable(stubClass))
                 .findFirst()
                 .orElseThrow(() -> new BeanInstantiationException(stubClass,
                         "Unsupported stub type: " + stubClass.getName() + " -> Please report this issue."));
         try {
-            String beanName = getBeanName(stubClass);
+            String beanName = getBeanName(stubClass, address);
             if (configurableBeanFactory.containsBean(beanName)) {
                 return configurableBeanFactory.getBean(stubClass);
             }
@@ -64,10 +62,16 @@ public class GrpcSubClientFactory {
                 if (configurableBeanFactory.containsBean(beanName)) {
                     return configurableBeanFactory.getBean(stubClass);
                 }
+                List<ClientInterceptor> interceptors = new ArrayList<>();
+                for(GrpcClientInterceptorConfigurer configurer: this.applicationContext
+                        .getBeansOfType(GrpcClientInterceptorConfigurer.class).values()) {
+                    configurer.configureClientInterceptors(interceptors);
+                }
+                channelBuilder.intercept(interceptors);
                 channelBuilder.usePlaintext();
                 ManagedChannel channel = channelBuilder.build();
                 stub = stubClass.cast(factory.createStub(stubClass, channel));
-                configurableBeanFactory.registerSingleton(stubClass.getName(), stub);
+                configurableBeanFactory.registerSingleton(beanName, stub);
             }
             return stub;
         } catch (final Exception exception) {
@@ -77,17 +81,10 @@ public class GrpcSubClientFactory {
     }
 
     public <T extends AbstractStub<T>>
-    T createStub(final Class<T> stubClass, String address, Integer port, ClientInterceptor... interceptors) {
-        ManagedChannelBuilder<?> channelBuilder = ManagedChannelBuilder.forAddress(address, port).intercept(interceptors);
-        channelBuilder.usePlaintext();
-        return createStub(stubClass, channelBuilder);
-    }
-
-    public <T extends AbstractStub<T>>
     T createStub(final Class<T> stubClass, String address, ClientInterceptor... interceptors) {
         ManagedChannelBuilder<?> channelBuilder = ManagedChannelBuilder.forTarget(address);
         channelBuilder.usePlaintext();
-        return createStub(stubClass, channelBuilder);
+        return createStub(stubClass, channelBuilder, address);
     }
 
     private List<StandardGrpcStubFactory> getStubFactories() {
