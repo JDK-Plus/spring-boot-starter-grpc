@@ -40,8 +40,8 @@ public class GrpcClientSelector extends WebApplicationObjectSupport implements B
     }
 
     @Bean
-    GrpcClientBeanPostProcessor getGrpcClientBeanPostProcessor() {
-        return new GrpcClientBeanPostProcessor(getApplicationContext());
+    GrpcClientBeanPostProcessor getGrpcClientBeanPostProcessor(GrpcSubClientFactory grpcSubClientFactory) {
+        return new GrpcClientBeanPostProcessor(getApplicationContext(), grpcSubClientFactory);
     }
 
     @Override
