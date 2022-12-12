@@ -115,9 +115,32 @@ public class GreeterImplService extends GreeterGrpc.GreeterImplBase {
 }
 ```
 
-### 如何调用上文中定义的GRPC服务
+### 如何调用上文中定义的GRPC服务（客户端调用）
+
+
+#### 定义声明一个远端的服务器集群
+
+```bash
+
+# 启动客户端的配置
+plus.jdk.grpc.client.enabled=true
+
+# 指定服务的scheme地址
+plus.jdk.grpc.client.resolvers[0].scheme=MyGrpc
+
+# 指定服务的host地址
+plus.jdk.grpc.client.resolvers[0].service-name=grpc-service-prod
+
+# 指定远端的GRPC服务列表
+plus.jdk.grpc.client.resolvers[0].hosts[0]=192.168.1.108:10202
+plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
+```
+
+#### 编写代码执行远程调用：
 
 ```java
+import io.grpc.ManagedChannelBuilder;
+
 public class GRpcRunner implements ApplicationRunner {
 
     @Value("${plus.jdk.grpc.port}")
@@ -129,7 +152,7 @@ public class GRpcRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int port = Integer.parseInt(grpcPort);
-        ManagedChannel channel = ManagedChannelBuilder.forAddress("127.0.0.1", port)
+        ManagedChannel channel = ManagedChannelBuilder.forTarget("MyGrpc://grpc-service-prod")
                 .usePlaintext().build();
         GreeterGrpc.GreeterBlockingStub blockingStub = grpcSubClientFactory.createStub(GreeterGrpc.GreeterBlockingStub.class, channel);
         HelloRequest request = HelloRequest.newBuilder().setName("jdk-plus").build();

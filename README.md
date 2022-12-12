@@ -13,7 +13,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.0.6</version>
+    <version>1.0.7</version>
 </dependency>
 ```
 
@@ -117,6 +117,25 @@ public class GreeterImplService extends GreeterGrpc.GreeterImplBase {
 
 ### How to call the Grpc service just defined
 
+#### The definition declares a remote cluster of servers
+
+```bash
+
+# Example Start the configuration of the client
+plus.jdk.grpc.client.enabled=true
+
+# scheme address of the user-defined service
+plus.jdk.grpc.client.resolvers[0].scheme=MyGrpc
+
+# Specify the host address of the service
+plus.jdk.grpc.client.resolvers[0].service-name=grpc-service-prod
+
+# Specifies the list of remote GRPC services
+plus.jdk.grpc.client.resolvers[0].hosts[0]=192.168.1.108:10202
+plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
+```
+#### 编写代码执行远程调用：
+
 ```java
 public class GRpcRunner implements ApplicationRunner {
 
@@ -129,7 +148,7 @@ public class GRpcRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) throws Exception {
         int port = Integer.parseInt(grpcPort);
-        ManagedChannel channel = ManagedChannelBuilder.forAddress("127.0.0.1", port)
+        ManagedChannel channel = ManagedChannelBuilder.forTarget("MyGrpc://grpc-service-prod")
                 .usePlaintext().build();
         GreeterGrpc.GreeterBlockingStub blockingStub = grpcSubClientFactory.createStub(GreeterGrpc.GreeterBlockingStub.class, channel);
         HelloRequest request = HelloRequest.newBuilder().setName("jdk-plus").build();
