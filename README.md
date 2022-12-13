@@ -13,7 +13,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.0.8</version>
+    <version>1.0.9</version>
 </dependency>
 ```
 
@@ -83,6 +83,28 @@ message HelloReply {
     string message = 1;
 }
 ```
+### Specify the global ServiceInterceptor.
+
+You need to implement ` GrpcServiceGlobalInterceptorConfigurer ` and should be declared as a bean instance
+
+```java
+
+import org.springframework.stereotype.Component;
+
+@Component
+public class GrpcServiceGlobalInterceptorConfigurer implements GrpcServiceInterceptorConfigurer {
+
+    private final RSACipherService rsaCipherService;
+
+    @Override
+    public void configureServerInterceptors(List<ServerInterceptor> interceptors) {
+        GrpcAuthServerInterceptor grpcAuthServerInterceptor =
+                new GrpcAuthServerInterceptor(rsaCipherService);
+        interceptors.add(grpcAuthServerInterceptor);
+    }
+}
+```
+
 
 ### How to define a Grpc service according to the above Protobuf structure
 
@@ -124,6 +146,9 @@ public class GreeterImplService extends GreeterGrpc.GreeterImplBase {
 # Example Start the configuration of the client
 plus.jdk.grpc.client.enabled=true
 
+# Specify a default connection address, which the @GrpcClient annotation uses by default
+plus.jdk.grpc.client.default-service=MyGrpc://grpc-service-prod
+
 # scheme address of the user-defined service
 plus.jdk.grpc.client.resolvers[0].scheme=MyGrpc
 
@@ -134,6 +159,27 @@ plus.jdk.grpc.client.resolvers[0].service-name=grpc-service-prod
 plus.jdk.grpc.client.resolvers[0].hosts[0]=192.168.1.108:10202
 plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
 ```
+
+
+#### Specify the global 'GrpcClientInterceptor'
+
+With the above, you need to implement `GrpcClientInterceptorConfigurer` method, add the corresponding Interceptor
+
+```java
+import org.springframework.stereotype.Component;
+
+@Component
+public class GrpcClientInterceptorGlobalConfigurer implements GrpcClientInterceptorConfigurer {
+    
+
+    @Override
+    public void configureClientInterceptors(List<ClientInterceptor> interceptors) {
+        // do something
+        interceptors.add(new GrpcClientRSAInterceptor(rsaCipherService));
+    }
+}
+```
+
 #### Write code to make the remote call：
 
 ```java
@@ -150,6 +196,13 @@ public class GRpcRunner implements ApplicationRunner {
 
     @GrpcClient("MyGrpc://grpc-service-prod")
     private GreeterGrpc.GreeterBlockingStub greeterBlockingStub;
+
+    /**
+     * Here @GrpcClient default `plus.jdk.grpc.client.default-service` configuration items specified value
+     */
+    @GrpcClient
+    private GreeterGrpc.GreeterBlockingStub greeterBlockingStubDefault;
+
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
