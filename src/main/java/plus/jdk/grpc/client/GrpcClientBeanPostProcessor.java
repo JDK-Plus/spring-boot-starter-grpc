@@ -13,7 +13,9 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.core.env.Environment;
 import org.springframework.util.ReflectionUtils;
+import org.springframework.util.StringUtils;
 import plus.jdk.grpc.annotation.GrpcClient;
+import plus.jdk.grpc.config.GrpcPlusClientProperties;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
@@ -27,9 +29,14 @@ public class GrpcClientBeanPostProcessor implements BeanPostProcessor {
 
     private final GrpcSubClientFactory grpcSubClientFactory;
 
-    public GrpcClientBeanPostProcessor(ApplicationContext context, GrpcSubClientFactory grpcSubClientFactory) {
+    private final GrpcPlusClientProperties properties;
+
+    public GrpcClientBeanPostProcessor(ApplicationContext context,
+                                       GrpcSubClientFactory grpcSubClientFactory,
+                                       GrpcPlusClientProperties properties) {
         this.applicationContext = context;
         this.grpcSubClientFactory = grpcSubClientFactory;
+        this.properties = properties;
     }
 
     @Override
@@ -83,6 +90,9 @@ public class GrpcClientBeanPostProcessor implements BeanPostProcessor {
         Environment environment = applicationContext.getEnvironment();
         final List<ClientInterceptor> interceptors = interceptorsFromAnnotation(annotation);
         String address = annotation.value();
+        if(!StringUtils.hasText(address)) {
+            address = properties.getDefaultService();
+        }
         try{
             URI uri = URI.create(address);
         }catch (Exception e) {

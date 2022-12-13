@@ -14,7 +14,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.0.8</version>
+    <version>1.0.9</version>
 </dependency>
 ```
 
@@ -84,6 +84,28 @@ message HelloReply {
 }
 ```
 
+### 指定全局的 ServiceInterceptor.
+
+你需要实现 `GrpcServiceGlobalInterceptorConfigurer`， 并将其声明为一个bean实例
+
+```java
+
+import org.springframework.stereotype.Component;
+
+@Component
+public class GrpcServiceGlobalInterceptorConfigurer implements GrpcServiceInterceptorConfigurer {
+
+    private final RSACipherService rsaCipherService;
+
+    @Override
+    public void configureServerInterceptors(List<ServerInterceptor> interceptors) {
+        GrpcAuthServerInterceptor grpcAuthServerInterceptor =
+                new GrpcAuthServerInterceptor(rsaCipherService);
+        interceptors.add(grpcAuthServerInterceptor);
+    }
+}
+```
+
 ### 如何根据上述的Protobuf结构定义一个Grpc service
 
 ```java
@@ -125,6 +147,9 @@ public class GreeterImplService extends GreeterGrpc.GreeterImplBase {
 # 启动客户端的配置
 plus.jdk.grpc.client.enabled=true
 
+# 指定一个默认的连接地址, 指定后 @GrpcClient 注解就默认使用该值
+plus.jdk.grpc.client.default-service=MyGrpc://grpc-service-prod
+
 # 指定服务的scheme地址
 plus.jdk.grpc.client.resolvers[0].scheme=MyGrpc
 
@@ -134,6 +159,25 @@ plus.jdk.grpc.client.resolvers[0].service-name=grpc-service-prod
 # 指定远端的GRPC服务列表
 plus.jdk.grpc.client.resolvers[0].hosts[0]=192.168.1.108:10202
 plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
+```
+
+#### 指定全局的`GrpcClientInterceptor`
+
+同上问，你需要实现 `GrpcClientInterceptorConfigurer` 方法，添加对应的Interceptor
+
+```java
+import org.springframework.stereotype.Component;
+
+@Component
+public class GrpcClientInterceptorGlobalConfigurer implements GrpcClientInterceptorConfigurer {
+    
+
+    @Override
+    public void configureClientInterceptors(List<ClientInterceptor> interceptors) {
+        // do something
+        interceptors.add(new GrpcClientRSAInterceptor(rsaCipherService));
+    }
+}
 ```
 
 #### 编写代码执行远程调用：
@@ -150,9 +194,15 @@ public class GRpcRunner implements ApplicationRunner {
 
     @Resource
     private GrpcSubClientFactory grpcSubClientFactory;
-    
+
     @GrpcClient("MyGrpc://grpc-service-prod")
     private GreeterGrpc.GreeterBlockingStub greeterBlockingStub;
+
+    /**
+     * 这里 @GrpcClient 默认使用 `plus.jdk.grpc.client.default-service` 配置项指定的值
+     */
+    @GrpcClient
+    private GreeterGrpc.GreeterBlockingStub greeterBlockingStubDefault;
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
