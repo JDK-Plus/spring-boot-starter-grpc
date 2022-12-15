@@ -14,7 +14,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.0.9</version>
+    <version>1.1.01</version>
 </dependency>
 ```
 
@@ -161,9 +161,77 @@ plus.jdk.grpc.client.resolvers[0].hosts[0]=192.168.1.108:10202
 plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
 ```
 
+#### 从配置配置中心（如zookeeper、etcd、redis）读取集群配置信息
+
+在很多情况下，为了保障服务的高可用性，我们会将集群信息存储在配置中心中统一下发，便于某个节点出现故障或扩容时快速新增节点.
+
+你可以通过实现 `INameResolverConfigurer` 接口来实现上述功能。下文中将给出一个从redis中读取配置的示例：
+
+```java
+import io.grpc.EquivalentAddressGroup;
+import org.springframework.stereotype.Component;
+import plus.jdk.grpc.client.INameResolverConfigurer;
+import plus.jdk.grpc.model.GrpcNameResolverModel;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+
+@Component
+public class GrpcGlobalNameResolverConfigurer implements INameResolverConfigurer {
+
+    private final RSACipherService rsaCipherService;
+
+    private final CommonRedisService commonRedisService;
+
+    public GrpcGlobalNameResolverConfigurer(RSACipherService rsaCipherService, CommonRedisService commonRedisService) {
+        this.rsaCipherService = rsaCipherService;
+        this.commonRedisService = commonRedisService;
+    }
+
+    protected String getGrpcNameResolverKeys() {
+        return "GrpcNameResolverKeys";
+    }
+
+    /**
+     * 该方法用于更新对应的uri下集群列表，默认每10秒执行一次
+     */
+    @Override
+    public List<EquivalentAddressGroup> configurationName(URI targetUri) {
+        GrpcNameResolverModel nameResolverModel =
+                commonRedisService.hget(getGrpcNameResolverKeys(), targetUri.toString(), GrpcNameResolverModel.class);
+        if (nameResolverModel == null) {
+            return new ArrayList<>();
+        }
+        return nameResolverModel.toEquivalentAddressGroups();
+    }
+
+    /**
+     * 该方法用于服务启动时集群列表的初始化
+     */
+    @Override
+    public void configureNameResolvers(List<GrpcNameResolverModel> resolverModels) {
+        commonRedisService.hScan(getGrpcNameResolverKeys(), "*", GrpcNameResolverModel.class, (result) -> {
+            if (result == null || result.getData() == null) {
+                return true;
+            }
+            resolverModels.add(result.getData());
+            return true;
+        });
+    }
+}
+```
+
+另外，你可以通过如下配置来指定集群实例列表同步周期：
+
+```bash
+# 指定每15秒刷新一次
+plus.jdk.grpc.client.name-refresh-rate=15
+```
+
 #### 指定全局的`GrpcClientInterceptor`
 
-同上问，你需要实现 `GrpcClientInterceptorConfigurer` 方法，添加对应的Interceptor
+同上文，你需要实现 `GrpcClientInterceptorConfigurer` 方法，添加对应的Interceptor
 
 ```java
 import org.springframework.stereotype.Component;

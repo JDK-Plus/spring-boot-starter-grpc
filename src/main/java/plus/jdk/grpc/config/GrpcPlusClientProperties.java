@@ -1,12 +1,12 @@
 package plus.jdk.grpc.config;
 
-import io.grpc.ClientInterceptor;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import plus.jdk.grpc.model.GrpcNameResolver;
+import plus.jdk.grpc.model.GrpcNameResolverModel;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Data
 @ConfigurationProperties(prefix = "plus.jdk.grpc.client")
@@ -24,7 +24,12 @@ public class GrpcPlusClientProperties {
     private String defaultService = "";
 
     /**
+     * 多久刷新一次集群对应的ip列表
+     */
+    private Integer nameRefreshRate = 10;
+
+    /**
      * 定义集群相关明细
      */
-    private List<GrpcNameResolver> resolvers = new ArrayList<>();
+    private List<GrpcNameResolverModel> resolvers = new ArrayList<>();
 }
