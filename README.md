@@ -13,7 +13,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.0.9</version>
+    <version>1.1.01</version>
 </dependency>
 ```
 
@@ -158,6 +158,76 @@ plus.jdk.grpc.client.resolvers[0].service-name=grpc-service-prod
 # Specifies the list of remote GRPC services
 plus.jdk.grpc.client.resolvers[0].hosts[0]=192.168.1.108:10202
 plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
+```
+
+#### Read the cluster configuration information from the configuration center (such as zookeeper, etcd, redis)
+
+In many cases, to ensure high availability of services, cluster information is stored in the configuration center and
+delivered in a unified manner, which facilitates the rapid addition of a node when a node fails or capacity is expanded.
+
+You can do this by implementing the 'INameResolverConfigurer' interface. An example of reading a configuration from redis is shown below:
+
+```java
+import io.grpc.EquivalentAddressGroup;
+import org.springframework.stereotype.Component;
+import plus.jdk.grpc.client.INameResolverConfigurer;
+import plus.jdk.grpc.model.GrpcNameResolverModel;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+
+@Component
+public class GrpcGlobalNameResolverConfigurer implements INameResolverConfigurer {
+
+    private final RSACipherService rsaCipherService;
+
+    private final CommonRedisService commonRedisService;
+
+    public GrpcGlobalNameResolverConfigurer(RSACipherService rsaCipherService, CommonRedisService commonRedisService) {
+        this.rsaCipherService = rsaCipherService;
+        this.commonRedisService = commonRedisService;
+    }
+
+    protected String getGrpcNameResolverKeys() {
+        return "GrpcNameResolverKeys";
+    }
+
+    /**
+     * This method is used to update the cluster list under the corresponding uri. 
+     * By default, this method is performed every 10 seconds
+     */
+    @Override
+    public List<EquivalentAddressGroup> configurationName(URI targetUri) {
+        GrpcNameResolverModel nameResolverModel =
+                commonRedisService.hget(getGrpcNameResolverKeys(), targetUri.toString(), GrpcNameResolverModel.class);
+        if (nameResolverModel == null) {
+            return new ArrayList<>();
+        }
+        return nameResolverModel.toEquivalentAddressGroups();
+    }
+
+    /**
+     * This method is used to initialize the cluster list when the service is started
+     */
+    @Override
+    public void configureNameResolvers(List<GrpcNameResolverModel> resolverModels) {
+        commonRedisService.hScan(getGrpcNameResolverKeys(), "*", GrpcNameResolverModel.class, (result) -> {
+            if (result == null || result.getData() == null) {
+                return true;
+            }
+            resolverModels.add(result.getData());
+            return true;
+        });
+    }
+}
+```
+
+In addition, you can specify the cluster instance list synchronization period with the following configuration:
+
+```bash
+# Specify a refresh every 15 seconds
+plus.jdk.grpc.client.name-refresh-rate=15
 ```
 
 
