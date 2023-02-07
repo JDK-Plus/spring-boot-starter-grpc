@@ -72,7 +72,7 @@ public class GrpcClientBeanPostProcessor implements BeanPostProcessor {
                 throw new BeanDefinitionStoreException(
                         "Method " + method + " doesn't have exactly one parameter.");
             }
-            for(Class<?> paramType: paramTypes) {
+            for (Class<?> paramType : paramTypes) {
                 if (!AbstractStub.class.isAssignableFrom(paramType)) {
                     throw new BeanInstantiationException(paramType, "Unsupported grpc stub or channel type");
                 }
@@ -86,17 +86,24 @@ public class GrpcClientBeanPostProcessor implements BeanPostProcessor {
 
     protected <T extends AbstractStub<T>>
     T processInjectionPoint(final Class<T> injectionType,
-                                          final GrpcClient annotation) {
+                            final GrpcClient annotation) {
         Environment environment = applicationContext.getEnvironment();
         final List<ClientInterceptor> interceptors = interceptorsFromAnnotation(annotation);
         String address = annotation.value();
-        if(!StringUtils.hasText(address)) {
+        if (!StringUtils.hasText(address)) {
             address = properties.getDefaultService();
         }
-        try{
-            URI uri = URI.create(address);
-        }catch (Exception e) {
-            address = environment.getProperty(address);
+        if (address.startsWith("${") && address.endsWith("}")) {
+            address = environment.getProperty(address.substring(2, address.length() - 1));
+        } else {
+            try {
+                URI uri = URI.create(address);
+                if (!uri.isAbsolute()) {
+                    address = environment.getProperty(address);
+                }
+            } catch (Exception e) {
+                address = environment.getProperty(address);
+            }
         }
         return grpcSubClientFactory.createStub(injectionType, address, interceptors.toArray(new ClientInterceptor[]{}));
     }
