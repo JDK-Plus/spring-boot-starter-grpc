@@ -14,7 +14,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.1.02</version>
+    <version>1.1.04</version>
 </dependency>
 ```
 
@@ -249,6 +249,8 @@ public class GrpcClientInterceptorGlobalConfigurer implements GrpcClientIntercep
 ```
 
 #### 编写代码执行远程调用：
+
+你可以使用 `@GrpcClient` 注解来申明一个Grpc 调用的 client， 示例如下：
 
 ```java
 import io.grpc.ManagedChannelBuilder;

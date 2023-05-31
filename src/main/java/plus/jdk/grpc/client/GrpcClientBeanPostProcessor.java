@@ -1,9 +1,9 @@
 package plus.jdk.grpc.client;
 
 import com.google.common.collect.Lists;
-import io.grpc.Channel;
 import io.grpc.ClientInterceptor;
 import io.grpc.stub.AbstractStub;
+import org.springframework.aop.framework.Advised;
 import org.springframework.beans.BeanInstantiationException;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanCreationException;
@@ -18,7 +18,6 @@ import plus.jdk.grpc.annotation.GrpcClient;
 import plus.jdk.grpc.config.GrpcPlusClientProperties;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.util.List;
@@ -41,8 +40,21 @@ public class GrpcClientBeanPostProcessor implements BeanPostProcessor {
 
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
-        processFields(bean.getClass(), bean);
-        processMethods(bean.getClass(), bean);
+        Class<?> clazz = bean.getClass();
+        if(bean instanceof Advised) {
+            clazz = bean.getClass().getSuperclass();
+            Advised advised = (Advised) bean;
+            try {
+                Object rawBean = advised.getTargetSource().getTarget();
+                Class<?> rawClazz = bean.getClass().getSuperclass();
+                processFields(rawClazz, rawBean);
+                processMethods(rawClazz, rawBean);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        processFields(clazz, bean);
+        processMethods(clazz, bean);
         return bean;
     }
 
