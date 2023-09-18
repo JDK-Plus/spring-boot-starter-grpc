@@ -14,7 +14,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.1.04</version>
+    <version>1.1.06</version>
 </dependency>
 ```
 
@@ -161,7 +161,40 @@ plus.jdk.grpc.client.resolvers[0].hosts[0]=192.168.1.108:10202
 plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
 ```
 
-#### 从配置配置中心（如zookeeper、etcd、redis）读取集群配置信息
+#### 服务注册
+
+当你在使用k8s集群的时候，你的集群信息必须随着节点的启动、销毁执行相应的注册、摘除工作，你可以通过实现`IGrpcServiceRegister`接口来完成这个事情
+
+```java
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import plus.jdk.etcd.global.EtcdClient;
+import plus.jdk.grpc.common.IGrpcServiceRegister;
+
+@Slf4j
+@AllArgsConstructor
+public class GrpcServerServiceRegister implements IGrpcServiceRegister {
+
+    private final EtcdClient etcdClient;
+
+    @Override
+    public void registerServiceNode() {
+        log.info("registerServiceNode");
+    }
+
+    @Override
+    public void updateNodeStatus() {
+        log.info("updateNodeStatus");
+    }
+
+    @Override
+    public void deregisterServiceNode() {
+        log.info("deregisterServiceNode");
+    }
+}
+```
+
+#### 服务注册。从配置配置中心（如zookeeper、etcd、redis）读取集群配置信息
 
 在很多情况下，为了保障服务的高可用性，我们会将集群信息存储在配置中心中统一下发，便于某个节点出现故障或扩容时快速新增节点.
 

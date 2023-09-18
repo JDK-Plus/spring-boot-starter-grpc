@@ -51,6 +51,17 @@ public class GrpcPlusProperties {
      */
     private String address = ANY_IP_ADDRESS;
 
+    /**
+     * 注册服务的核心线程数, 默认为2
+     */
+    private Integer serviceRegisterThreadNum = 2;
+
+    /**
+     * 服务发现的回调，多久调用一次
+     */
+    @DurationUnit(ChronoUnit.MILLIS)
+    private Duration serviceRegisterInterval = Duration.of(5000, ChronoUnit.MILLIS);
+
 
     private boolean enableKeepAlive;
 

@@ -10,12 +10,16 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.util.unit.DataSize;
 import plus.jdk.grpc.annotation.GrpcService;
 import plus.jdk.grpc.common.GrpcUtils;
+import plus.jdk.grpc.common.IGrpcServiceRegister;
 import plus.jdk.grpc.config.GrpcPlusProperties;
 import plus.jdk.grpc.model.GrpcServiceDefinition;
 
 import java.net.InetSocketAddress;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static plus.jdk.grpc.common.GrpcUtils.DOMAIN_SOCKET_ADDRESS_PREFIX;
 import static plus.jdk.grpc.config.GrpcPlusProperties.ANY_IP_ADDRESS;
@@ -34,6 +38,8 @@ public class GrpcServerFactory {
     private final BeanFactory beanFactory;
 
     private final GrpcPlusProperties properties;
+
+    private final ScheduledExecutorService scheduledExecutorService;
 
     public Server createServer() {
         NettyServerBuilder builder = newServerBuilder();
@@ -87,6 +93,20 @@ public class GrpcServerFactory {
         this.applicationContext = applicationContext;
         this.beanFactory = beanFactory;
         this.properties = properties;
+        this.scheduledExecutorService = Executors.newScheduledThreadPool(properties.getServiceRegisterThreadNum());
+        this.scheduledExecutorService.scheduleAtFixedRate(
+                () -> updateGrpcServiceStatus(IGrpcServiceRegister::updateNodeStatus),
+                properties.getServiceRegisterInterval().toMillis(),
+                properties.getServiceRegisterInterval().toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+
+    protected void updateGrpcServiceStatus(Consumer<IGrpcServiceRegister> consumer) {
+        Map<String, IGrpcServiceRegister> registerHashMap =
+                this.applicationContext.getBeansOfType(IGrpcServiceRegister.class);
+        for(IGrpcServiceRegister register:registerHashMap.values()) {
+            consumer.accept(register);
+        }
     }
 
     protected Collection<GrpcServiceDefinition> findGrpcServices(){

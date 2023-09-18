@@ -6,7 +6,7 @@
 
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.1.05</version>
+    <version>1.1.06</version>
 
     <name>spring-boot-starter-grpc</name>
     <description>spring-boot-starter-grpc</description>

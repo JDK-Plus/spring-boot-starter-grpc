@@ -159,6 +159,40 @@ plus.jdk.grpc.client.resolvers[0].service-name=grpc-service-prod
 plus.jdk.grpc.client.resolvers[0].hosts[0]=192.168.1.108:10202
 plus.jdk.grpc.client.resolvers[0].hosts[1]=192.168.1.107:10202
 ```
+#### Service Register
+
+When you use k8s clusters, your cluster information must be registered and removed as nodes are started and destroyed, and you can do this by implementing the `IGrpcServiceRegister` interface
+
+```java
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import plus.jdk.etcd.global.EtcdClient;
+import plus.jdk.grpc.common.IGrpcServiceRegister;
+
+@Slf4j
+@AllArgsConstructor
+public class GrpcServerServiceRegister implements IGrpcServiceRegister {
+
+    private final EtcdClient etcdClient;
+
+    @Override
+    public void registerServiceNode() {
+        log.info("registerServiceNode");
+    }
+
+    @Override
+    public void updateNodeStatus() {
+        log.info("updateNodeStatus");
+    }
+
+    @Override
+    public void deregisterServiceNode() {
+        log.info("deregisterServiceNode");
+    }
+}
+```
+
+
 
 #### Read the cluster configuration information from the configuration center (such as zookeeper, etcd, redis)
 
