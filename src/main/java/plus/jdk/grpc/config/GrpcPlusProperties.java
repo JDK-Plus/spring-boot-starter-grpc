@@ -32,6 +32,11 @@ public class GrpcPlusProperties {
     private Integer port = 10240;
 
     /**
+     * 服务名称, 保留字段，目前暂时没用
+     */
+    private String serviceUri = "my-grpc://service-name";
+
+    /**
      * 主线程核心线程数
      */
     private Integer masterThreadNum = 1;
