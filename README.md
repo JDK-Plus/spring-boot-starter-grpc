@@ -13,7 +13,7 @@
 <dependency>
     <groupId>plus.jdk.grpc</groupId>
     <artifactId>spring-boot-starter-grpc</artifactId>
-    <version>1.1.06</version>
+    <version>1.1.07</version>
 </dependency>
 ```
 

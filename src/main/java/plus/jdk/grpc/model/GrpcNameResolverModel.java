@@ -25,6 +25,10 @@ public class GrpcNameResolverModel {
      */
     private List<String> hosts;
 
+    public String buildScheme() {
+        return String.format("%s://%s", getScheme(), getServiceName());
+    }
+
     public List<EquivalentAddressGroup> toEquivalentAddressGroups() {
         List<EquivalentAddressGroup> addressGroupList = new ArrayList<>();
         for(String host: getHosts()) {
