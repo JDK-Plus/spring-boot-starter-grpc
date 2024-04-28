@@ -309,10 +309,6 @@ public class GRpcRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        int port = Integer.parseInt(grpcPort);
-//        ManagedChannel channel = ManagedChannelBuilder.forTarget("MyGrpc://grpc-service-prod")
-//                .usePlaintext().build();
-//        GreeterGrpc.GreeterBlockingStub blockingStub = grpcSubClientFactory.createStub(GreeterGrpc.GreeterBlockingStub.class, channel);
         HelloRequest request = HelloRequest.newBuilder().setName("jdk-plus").build();
         HelloReply reply = greeterBlockingStub.sayHello(request);
         log.info("sayHello data:{}, receive:{}", request, reply);
@@ -322,3 +318,9 @@ public class GRpcRunner implements ApplicationRunner {
     }
 }
 ```
+
+### 关于protobuf文件的编译以及打包
+
+此处强烈推荐 `[protobuf-maven-plugin](https://github.com/xolstice/protobuf-maven-plugin/)`,
+
+对应的该组件可以直接在编译时自动构建生成protobuf对应的编译后的java代码，详细的使用方法请参见：`[usage](https://www.xolstice.org/protobuf-maven-plugin/usage.html)`

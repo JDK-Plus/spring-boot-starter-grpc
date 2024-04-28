@@ -310,16 +310,22 @@ public class GRpcRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        int port = Integer.parseInt(grpcPort);
-//        ManagedChannel channel = ManagedChannelBuilder.forTarget("MyGrpc://grpc-service-prod")
-//                .usePlaintext().build();
-//        GreeterGrpc.GreeterBlockingStub blockingStub = grpcSubClientFactory.createStub(GreeterGrpc.GreeterBlockingStub.class, channel);
+        
+        // send request,say hello
         HelloRequest request = HelloRequest.newBuilder().setName("jdk-plus").build();
         HelloReply reply = greeterBlockingStub.sayHello(request);
         log.info("sayHello data:{}, receive:{}", request, reply);
+        
+        // send request again
         reply = blockingStub.sayHelloAgain(request);
         log.info("sayHelloAgain data:{}, receive:{}", request, reply);
         TimeUnit.SECONDS.sleep(1);
     }
 }
 ```
+
+### About the compilation and packaging of protobuf files
+
+Highly recommended here: `[protobuf-maven-plugin](https://github.com/xolstice/protobuf-maven-plugin/)`,
+
+This component can be used to automatically build and generate the compiled Java code corresponding to Protobuf at compile time：`[usage](https://www.xolstice.org/protobuf-maven-plugin/usage.html)`
