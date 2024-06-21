@@ -194,72 +194,241 @@ public class GrpcServerServiceRegister implements IGrpcServiceRegister {
 }
 ```
 
-#### 服务注册。从配置配置中心（如zookeeper、etcd、redis）读取集群配置信息
+##### 服务注册。从配置配置中心（如zookeeper、etcd、redis）读取集群配置信息
 
 在很多情况下，为了保障服务的高可用性，我们会将集群信息存储在配置中心中统一下发，便于某个节点出现故障或扩容时快速新增节点.
 
-你可以通过实现 `INameResolverConfigurer` 接口来实现上述功能。下文中将给出一个从redis中读取配置的示例：
+你可以通过实现 `IGrpcServiceRegister` 接口来实现上述功能。下文中将给出一个从redis中读取配置的示例：
 
 ```java
-import io.grpc.EquivalentAddressGroup;
-import org.springframework.stereotype.Component;
-import plus.jdk.grpc.client.INameResolverConfigurer;
+
+import com.google.gson.Gson;
+import io.etcd.jetcd.kv.TxnResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.lang.NonNull;
+import org.springframework.web.context.support.WebApplicationObjectSupport;
+import plus.jdk.etcd.global.EtcdClient;
+import plus.jdk.grpc.common.IGrpcServiceRegister;
+import plus.jdk.grpc.config.GrpcPlusProperties;
 import plus.jdk.grpc.model.GrpcNameResolverModel;
 
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-@Component
+@Slf4j
+public class GrpcServerServiceRegister extends WebApplicationObjectSupport implements IGrpcServiceRegister {
+
+    private final EtcdClient etcdClient;
+
+    private final BrandGrpcServerProperties properties;
+
+    private URI serviceUri;
+
+    private Integer port;
+
+    private String registerPath;
+
+    private final Gson gson;
+
+    public GrpcServerServiceRegister(EtcdClient etcdClient, BrandGrpcServerProperties properties, Gson gson) {
+        this.etcdClient = etcdClient;
+        this.properties = properties;
+        this.gson = gson;
+    }
+
+    protected void initRegisterInfo() {
+        if (this.serviceUri != null) {
+            return;
+        }
+        String serviceName = SpringContext.getProperty(properties.getServiceUriKey(), String.class);
+        assert serviceName != null;
+        this.serviceUri = URI.create(serviceName);
+        this.port = SpringContext.getProperty(properties.getServicePortKey(), Integer.class);
+        this.registerPath = String.join("/", new String[]{
+                properties.getServiceRegisterPath(), serviceUri.getHost(), Helper.getIpAddress()
+        });
+    }
+
+    private GrpcNameResolverModel getGrpcNameResolverModel() {
+        initRegisterInfo();
+        String userIp = Helper.getIpAddress();
+        if(StringUtil.isEmpty(userIp)) {
+            throw new RuntimeException("cat not get machine ip address");
+        }
+        GrpcNameResolverModel resolverModel = new GrpcNameResolverModel();
+        resolverModel.setServiceName(serviceUri.getHost());
+        resolverModel.setScheme(serviceUri.getScheme());
+        resolverModel.setHosts(new ArrayList<>());
+        resolverModel.getHosts().add(String.format("%s:%s", userIp, port));
+        return resolverModel;
+    }
+
+    private Long computeNodeExpire() {
+        GrpcPlusProperties grpcPlusProperties = SpringContext.getBean(GrpcPlusProperties.class);
+        if (grpcPlusProperties == null) {
+            return properties.getNodeExpire();
+        }
+        return grpcPlusProperties.getServiceRegisterInterval().getSeconds() * 2;
+    }
+
+
+    @Override
+    public void registerServiceNode() {
+        try {
+            if(SpringContext.isDevelopment() || Boolean.parseBoolean(System.getProperty("grpc.service.not.register"))) {
+                return;
+            }
+            initRegisterInfo();
+            GrpcNameResolverModel resolverModel = getGrpcNameResolverModel();
+            Long expire = computeNodeExpire();
+            CompletableFuture<TxnResponse> future =
+                    etcdClient.put(registerPath, resolverModel, expire * 2);
+            log.info("registerServiceNode success, resolverModel:{}, ret:{}", resolverModel, future.get());
+        } catch (Exception e) {
+            log.info("registerServiceNode failed, msg:{}", e.getMessage());
+        }
+    }
+
+    @Override
+    public void updateNodeStatus() {
+        registerServiceNode();
+    }
+
+    @Override
+    public void deregisterServiceNode() {
+        etcdClient.delete(registerPath);
+    }
+}
+
+```
+
+另外，你可以通过如下配置来指定集群实例列表同步周期：
+
+
+```bash
+# 指定每15秒刷新一次
+plus.jdk.grpc.client.name-refresh-rate=15
+```
+
+#### 服务发现
+
+在上文中我们通过`etcd`来完成了服务注册，现在来做一下服务发现。服务发现其实是在调用方这里来实现的，例如，调用地址是: `myGrpc://ouer-domain.service`，那么客户端就需要知道这个`scheme`后面对应的集群中的所有实例的ip列表是什么。
+
+这里的机制一共有两种。
+
+- 一种是通过定时扫来更新本地的`name service`名称解析，即不断的定时上`ectd`或其他存储集群配置信息的地方去读取这个信息，比如每3秒去拉取更新一次
+- 定时拉取虽好，但是总有延迟，所以也可以在实现里面通过watch etcd key的方式来订阅集群中节点的变化来实时更新数据
+
+在这个框架中，服务发现需要实现 `INameResolverConfigurer`接口，该接口定义如下：
+
+```java
+public interface INameResolverConfigurer {
+
+    /**
+     * 刷新对应的uri对应的实例列表, 默认每10秒执行一次， 这里默认实现了定时更新的逻辑
+     * 刷新周期可以通过 plus.jdk.grpc.client.name-refresh-rate=15 配置来指定
+     */
+    List<EquivalentAddressGroup> configurationName(URI targetUri);
+
+    /**
+     * 初始化所有自定义的地址， 可以在这里订阅(watch) ectd、zookeeper等其他配置中心的数据来实时更新name service下的内容
+     */
+    void configureNameResolvers(List<GrpcNameResolverModel> resolverModels);
+}
+```
+
+
+```java
+@Slf4j
 public class GrpcGlobalNameResolverConfigurer implements INameResolverConfigurer {
+
+    private final BrandGrpcClientProperties properties;
 
     private final RSACipherService rsaCipherService;
 
     private final CommonRedisService commonRedisService;
 
-    public GrpcGlobalNameResolverConfigurer(RSACipherService rsaCipherService, CommonRedisService commonRedisService) {
+    private final EtcdClient etcdClient;
+
+    private List<GrpcNameResolverModel> grpcNameResolverModels;
+
+    private Watch.Watcher watcher;
+
+    private final ScheduledExecutorService scheduledExecutorService;
+
+    public GrpcGlobalNameResolverConfigurer(BrandGrpcClientProperties properties,
+                                            RSACipherService rsaCipherService,
+                                            CommonRedisService commonRedisService,
+                                            EtcdClient etcdClient) {
+        this.properties = properties;
         this.rsaCipherService = rsaCipherService;
         this.commonRedisService = commonRedisService;
+        this.etcdClient = etcdClient;
+        this.scheduledExecutorService = Executors.newScheduledThreadPool(2);
+        this.scheduledExecutorService.scheduleAtFixedRate(this::mergeAndScanService,
+                5, 5, TimeUnit.SECONDS);
     }
 
-    protected String getGrpcNameResolverKeys() {
-        return "GrpcNameResolverKeys";
-    }
-
-    /**
-     * 该方法用于更新对应的uri下集群列表，默认每10秒执行一次
-     */
     @Override
     public List<EquivalentAddressGroup> configurationName(URI targetUri) {
-        GrpcNameResolverModel nameResolverModel =
-                commonRedisService.hget(getGrpcNameResolverKeys(), targetUri.toString(), GrpcNameResolverModel.class);
+        HashMap<String, GrpcNameResolverModel> grpcNameResolverMap = CollectionUtil.toHashMap(grpcNameResolverModels, data -> String.format("%s://%s", data.getScheme(), data.getServiceName()));
+        GrpcNameResolverModel nameResolverModel = grpcNameResolverMap.get(targetUri.toString());
         if (nameResolverModel == null) {
             return new ArrayList<>();
         }
         return nameResolverModel.toEquivalentAddressGroups();
     }
 
-    /**
-     * 该方法用于服务启动时集群列表的初始化
-     */
     @Override
     public void configureNameResolvers(List<GrpcNameResolverModel> resolverModels) {
-        commonRedisService.hScan(getGrpcNameResolverKeys(), "*", GrpcNameResolverModel.class, (result) -> {
-            if (result == null || result.getData() == null) {
-                return true;
+        try {
+            TablePrinter tablePrinter = new TablePrinter();
+            mergeAndScanService();
+            grpcNameResolverModels = mergeAndScanService();
+            resolverModels.addAll(grpcNameResolverModels);
+            tablePrinter.printTable(grpcNameResolverModels, GrpcNameResolverModel.class);
+            log.info("configureNameResolvers success, grpcNameResolverModels:{}", grpcNameResolverModels);
+        } catch (Exception | Error e) {
+            log.info("configureNameResolvers failed, msg:{}", e.getMessage());
+        }
+    }
+
+    private List<GrpcNameResolverModel> mergeAndScanService() {
+        try {
+            String configKey = "your etcd or zk config path";
+            KeyValuePair<GrpcNameResolverModel[]> nameResolverModels =
+                    etcdClient.getFirstKV(configKey, GrpcNameResolverModel[].class).get();
+            this.grpcNameResolverModels = Arrays.asList(nameResolverModels.getValue());
+            HashMap<String, GrpcNameResolverModel> grpcNameResolverMap =
+                    CollectionUtil.toHashMap(grpcNameResolverModels, GrpcNameResolverModel::buildScheme);
+            List<GrpcNameResolverModel> resolverModels = new ArrayList<>(grpcNameResolverMap.values());
+            CompletableFuture<List<KeyValuePair<GrpcNameResolverModel>>> future =
+                    etcdClient.scanByPrefix(properties.getServiceRegisterPath(), GrpcNameResolverModel.class);
+            List<KeyValuePair<GrpcNameResolverModel>> keyValuePairs = future.get();
+            for (KeyValuePair<GrpcNameResolverModel> keyValuePair : keyValuePairs) {
+                GrpcNameResolverModel resolverModel = keyValuePair.getValue();
+                if (resolverModel == null) {
+                    continue;
+                }
+                if (grpcNameResolverMap.containsKey(resolverModel.buildScheme())) {
+                    grpcNameResolverMap.get(resolverModel.buildScheme()).getHosts().addAll(resolverModel.getHosts());
+                }
+                resolverModels.add(keyValuePair.getValue());
             }
-            resolverModels.add(result.getData());
-            return true;
-        });
+            this.grpcNameResolverModels = resolverModels;
+            return resolverModels;
+        } catch (Exception e) {
+        }
+        return new ArrayList<>();
     }
 }
-```
-
-另外，你可以通过如下配置来指定集群实例列表同步周期：
-
-```bash
-# 指定每15秒刷新一次
-plus.jdk.grpc.client.name-refresh-rate=15
 ```
 
 #### 指定全局的`GrpcClientInterceptor`

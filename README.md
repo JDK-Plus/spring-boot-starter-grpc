@@ -202,57 +202,108 @@ delivered in a unified manner, which facilitates the rapid addition of a node wh
 You can do this by implementing the 'INameResolverConfigurer' interface. An example of reading a configuration from redis is shown below:
 
 ```java
-import io.grpc.EquivalentAddressGroup;
-import org.springframework.stereotype.Component;
-import plus.jdk.grpc.client.INameResolverConfigurer;
+import com.google.gson.Gson;
+import io.etcd.jetcd.kv.TxnResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.lang.NonNull;
+import org.springframework.web.context.support.WebApplicationObjectSupport;
+import plus.jdk.etcd.global.EtcdClient;
+import plus.jdk.grpc.common.IGrpcServiceRegister;
+import plus.jdk.grpc.config.GrpcPlusProperties;
 import plus.jdk.grpc.model.GrpcNameResolverModel;
 
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-@Component
-public class GrpcGlobalNameResolverConfigurer implements INameResolverConfigurer {
+@Slf4j
+public class GrpcServerServiceRegister extends WebApplicationObjectSupport implements IGrpcServiceRegister {
 
-    private final RSACipherService rsaCipherService;
+    private final EtcdClient etcdClient;
 
-    private final CommonRedisService commonRedisService;
+    private final BrandGrpcServerProperties properties;
 
-    public GrpcGlobalNameResolverConfigurer(RSACipherService rsaCipherService, CommonRedisService commonRedisService) {
-        this.rsaCipherService = rsaCipherService;
-        this.commonRedisService = commonRedisService;
+    private URI serviceUri;
+
+    private Integer port;
+
+    private String registerPath;
+
+    private final Gson gson;
+
+    public GrpcServerServiceRegister(EtcdClient etcdClient, BrandGrpcServerProperties properties, Gson gson) {
+        this.etcdClient = etcdClient;
+        this.properties = properties;
+        this.gson = gson;
     }
 
-    protected String getGrpcNameResolverKeys() {
-        return "GrpcNameResolverKeys";
-    }
-
-    /**
-     * This method is used to update the cluster list under the corresponding uri. 
-     * By default, this method is performed every 10 seconds
-     */
-    @Override
-    public List<EquivalentAddressGroup> configurationName(URI targetUri) {
-        GrpcNameResolverModel nameResolverModel =
-                commonRedisService.hget(getGrpcNameResolverKeys(), targetUri.toString(), GrpcNameResolverModel.class);
-        if (nameResolverModel == null) {
-            return new ArrayList<>();
+    protected void initRegisterInfo() {
+        if (this.serviceUri != null) {
+            return;
         }
-        return nameResolverModel.toEquivalentAddressGroups();
+        String serviceName = SpringContext.getProperty(properties.getServiceUriKey(), String.class);
+        assert serviceName != null;
+        this.serviceUri = URI.create(serviceName);
+        this.port = SpringContext.getProperty(properties.getServicePortKey(), Integer.class);
+        this.registerPath = String.join("/", new String[]{
+                properties.getServiceRegisterPath(), serviceUri.getHost(), Helper.getIpAddress()
+        });
     }
 
-    /**
-     * This method is used to initialize the cluster list when the service is started
-     */
+    private GrpcNameResolverModel getGrpcNameResolverModel() {
+        initRegisterInfo();
+        String userIp = Helper.getIpAddress();
+        if(StringUtil.isEmpty(userIp)) {
+            throw new RuntimeException("cat not get machine ip address");
+        }
+        GrpcNameResolverModel resolverModel = new GrpcNameResolverModel();
+        resolverModel.setServiceName(serviceUri.getHost());
+        resolverModel.setScheme(serviceUri.getScheme());
+        resolverModel.setHosts(new ArrayList<>());
+        resolverModel.getHosts().add(String.format("%s:%s", userIp, port));
+        return resolverModel;
+    }
+
+    private Long computeNodeExpire() {
+        GrpcPlusProperties grpcPlusProperties = SpringContext.getBean(GrpcPlusProperties.class);
+        if (grpcPlusProperties == null) {
+            return properties.getNodeExpire();
+        }
+        return grpcPlusProperties.getServiceRegisterInterval().getSeconds() * 2;
+    }
+
+
     @Override
-    public void configureNameResolvers(List<GrpcNameResolverModel> resolverModels) {
-        commonRedisService.hScan(getGrpcNameResolverKeys(), "*", GrpcNameResolverModel.class, (result) -> {
-            if (result == null || result.getData() == null) {
-                return true;
+    public void registerServiceNode() {
+        try {
+            if(SpringContext.isDevelopment() || Boolean.parseBoolean(System.getProperty("grpc.service.not.register"))) {
+                return;
             }
-            resolverModels.add(result.getData());
-            return true;
-        });
+            initRegisterInfo();
+            GrpcNameResolverModel resolverModel = getGrpcNameResolverModel();
+            Long expire = computeNodeExpire();
+            CompletableFuture<TxnResponse> future =
+                    etcdClient.put(registerPath, resolverModel, expire * 2);
+            log.info("registerServiceNode success, resolverModel:{}, ret:{}", resolverModel, future.get());
+        } catch (Exception e) {
+            log.info("registerServiceNode failed, msg:{}", e.getMessage());
+        }
+    }
+
+    @Override
+    public void updateNodeStatus() {
+        registerServiceNode();
+    }
+
+    @Override
+    public void deregisterServiceNode() {
+        etcdClient.delete(registerPath);
     }
 }
 ```
@@ -262,6 +313,121 @@ In addition, you can specify the cluster instance list synchronization period wi
 ```bash
 # Specify a refresh every 15 seconds
 plus.jdk.grpc.client.name-refresh-rate=15
+```
+
+#### Service Discovery
+
+In the previous text, we completed service registration through 'etcd', now let's do service discovery. Service discovery is actually implemented here by the caller, for example, the calling address is: `myGrpc://ouer-domain.service`, So the client needs to know what the IP list of all instances in the cluster corresponding to this scheme is.
+
+There are two types of mechanisms here.
+
+- One way is to update the local `name service` name resolution through timed scans, which means continuously reading this information from `ectd` or other storage locations where cluster configuration information is stored, such as pulling updates every 3 seconds
+- Although scheduled pull is good, there is always a delay, so it is also possible to subscribe to changes in nodes in the cluster through a watch etcd key in the implementation to update data in real time
+
+In this framework, the service discovers the need to implement the `INameResolverConfigurer` interface, which is defined as follows:
+
+```java
+public interface INameResolverConfigurer {
+
+    /**
+     * Refresh the instance list corresponding to the corresponding uri, which is executed every 10 seconds by default. Here, the logic of scheduled updates is implemented by default
+     * The refresh cycle can be specified by configuring plus. jdk. grpc. client. name refresh rate=15
+     */
+    List<EquivalentAddressGroup> configurationName(URI targetUri);
+
+    /**
+     * Initialize all custom addresses, where you can subscribe to (watch) data from other configuration centers such as ectd and zookeeper to update the content under the name service in real-time
+     */
+    void configureNameResolvers(List<GrpcNameResolverModel> resolverModels);
+}
+```
+
+Here is an example of implementing service discovery through ETCD:
+
+```java
+@Slf4j
+public class GrpcGlobalNameResolverConfigurer implements INameResolverConfigurer {
+
+    private final BrandGrpcClientProperties properties;
+
+    private final RSACipherService rsaCipherService;
+
+    private final CommonRedisService commonRedisService;
+
+    private final EtcdClient etcdClient;
+
+    private List<GrpcNameResolverModel> grpcNameResolverModels;
+
+    private Watch.Watcher watcher;
+
+    private final ScheduledExecutorService scheduledExecutorService;
+
+    public GrpcGlobalNameResolverConfigurer(BrandGrpcClientProperties properties,
+                                            RSACipherService rsaCipherService,
+                                            CommonRedisService commonRedisService,
+                                            EtcdClient etcdClient) {
+        this.properties = properties;
+        this.rsaCipherService = rsaCipherService;
+        this.commonRedisService = commonRedisService;
+        this.etcdClient = etcdClient;
+        this.scheduledExecutorService = Executors.newScheduledThreadPool(2);
+        this.scheduledExecutorService.scheduleAtFixedRate(this::mergeAndScanService,
+                5, 5, TimeUnit.SECONDS);
+    }
+
+    @Override
+    public List<EquivalentAddressGroup> configurationName(URI targetUri) {
+        HashMap<String, GrpcNameResolverModel> grpcNameResolverMap = CollectionUtil.toHashMap(grpcNameResolverModels, data -> String.format("%s://%s", data.getScheme(), data.getServiceName()));
+        GrpcNameResolverModel nameResolverModel = grpcNameResolverMap.get(targetUri.toString());
+        if (nameResolverModel == null) {
+            return new ArrayList<>();
+        }
+        return nameResolverModel.toEquivalentAddressGroups();
+    }
+
+    @Override
+    public void configureNameResolvers(List<GrpcNameResolverModel> resolverModels) {
+        try {
+            TablePrinter tablePrinter = new TablePrinter();
+            mergeAndScanService();
+            grpcNameResolverModels = mergeAndScanService();
+            resolverModels.addAll(grpcNameResolverModels);
+            tablePrinter.printTable(grpcNameResolverModels, GrpcNameResolverModel.class);
+            log.info("configureNameResolvers success, grpcNameResolverModels:{}", grpcNameResolverModels);
+        } catch (Exception | Error e) {
+            log.info("configureNameResolvers failed, msg:{}", e.getMessage());
+        }
+    }
+
+    private List<GrpcNameResolverModel> mergeAndScanService() {
+        try {
+            String configKey = "your etcd or zk config path";
+            KeyValuePair<GrpcNameResolverModel[]> nameResolverModels =
+                    etcdClient.getFirstKV(configKey, GrpcNameResolverModel[].class).get();
+            this.grpcNameResolverModels = Arrays.asList(nameResolverModels.getValue());
+            HashMap<String, GrpcNameResolverModel> grpcNameResolverMap =
+                    CollectionUtil.toHashMap(grpcNameResolverModels, GrpcNameResolverModel::buildScheme);
+            List<GrpcNameResolverModel> resolverModels = new ArrayList<>(grpcNameResolverMap.values());
+            CompletableFuture<List<KeyValuePair<GrpcNameResolverModel>>> future =
+                    etcdClient.scanByPrefix(properties.getServiceRegisterPath(), GrpcNameResolverModel.class);
+            List<KeyValuePair<GrpcNameResolverModel>> keyValuePairs = future.get();
+            for (KeyValuePair<GrpcNameResolverModel> keyValuePair : keyValuePairs) {
+                GrpcNameResolverModel resolverModel = keyValuePair.getValue();
+                if (resolverModel == null) {
+                    continue;
+                }
+                if (grpcNameResolverMap.containsKey(resolverModel.buildScheme())) {
+                    grpcNameResolverMap.get(resolverModel.buildScheme()).getHosts().addAll(resolverModel.getHosts());
+                }
+                resolverModels.add(keyValuePair.getValue());
+            }
+            this.grpcNameResolverModels = resolverModels;
+            return resolverModels;
+        } catch (Exception e) {
+        }
+        return new ArrayList<>();
+    }
+}
 ```
 
 
